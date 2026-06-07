@@ -1,81 +1,77 @@
 # Website Necromancer
 
-A suite of Python scripts to download, resurrect, and locally host websites from the Internet Archive's Wayback Machine. This project provides an asynchronous Python rewrite of the original Ruby `wayback-machine-downloader` (now called Website Necromancer), along with post-processing tools to ensure the downloaded websites work perfectly offline.
+A unified Python toolkit to download, resurrect, and locally host websites from the Internet Archive's Wayback Machine. This project provides an asynchronous Python rewrite of the original Ruby `wayback-machine-downloader`, along with an **automated post-processing pipeline** that automatically scrubs aggressive redirects, rewrites absolute links to local relative paths, and tags broken missing links so you can browse the archived website completely offline.
 
-## Features
+## Getting Started
 
-- **`website_necromancer.py`**: Fast, asynchronous downloading of an entire website from the Wayback Machine.
-- **`rewrite_links.py`**: Converts absolute URLs to relative paths and appends `index.html` where necessary, enabling seamless offline browsing via the `file://` protocol.
-- **`clean_html.py`**: Removes aggressive JavaScript redirects that force HTTPS, preventing local viewing from breaking.
-- **`mark_missing_links.py`**: Scans the downloaded site and visually tags broken links with `[Not Archieved]`, so you know exactly which pages couldn't be recovered.
+**Prerequisites:** Python 3.10+
 
-## Installation
-
-Requires Python 3.7+.
-
-1. Clone the repository and navigate into it.
-2. Install the required dependencies:
+1. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
+2. Set the `GEMINI_API_KEY` in `.env.local` to your Gemini API key (if applicable).
 
 ## Workflow & Usage
 
-A typical resurrection workflow consists of downloading the site and then running the post-processing scripts. All downloaded files are stored in a `websites/<domain>` directory.
+The entire resurrection workflow is now handled automatically by the main script. All downloaded files are stored in a `websites/<domain>` directory.
 
-### 1. Download the Website
+### 1. Download & Process the Website
 
-Use the main downloader script to fetch the site from the Wayback Machine.
+Run the main script to fetch the site from the Wayback Machine. Once the download finishes, the script will **automatically** run the internal cleaning, link-rewriting, and link-marking phases so the site is immediately ready for offline viewing.
 
 ```bash
-python website_necromancer.py http://example.com -c 10
+python3 website_necromancer.py http://example.com -c 10
 ```
 
 **Options:**
 ```text
-usage: website_necromancer.py [-h] [-d DIRECTORY] [-s] [-f FROM_TIMESTAMP] [-t TO_TIMESTAMP] [-e] [-o ONLY_FILTER] [-x EXCLUDE_FILTER] [-a] [-c THREADS_COUNT] [-p MAXIMUM_PAGES] [-l] [-v] [base_url]
+usage: website_necromancer.py [-h] [-d DIRECTORY] [-s] [-f FROM_TIMESTAMP] [-t TO_TIMESTAMP] [-e] [-o ONLY_FILTER] [-x EXCLUDE_FILTER] [-a] [-c THREADS_COUNT] [-p MAXIMUM_PAGES] [-l] [-v] [--log-file LOG_FILE] [base_url]
 
 options:
-  -c THREADS_COUNT      Number of multiple files to download at a time. Default is one file at a time (ie. 20)
+  -c THREADS_COUNT      Number of concurrent files to download at a time. Default is 10.
   -d DIRECTORY          Directory to save the downloaded files into. Default is ./websites/ plus the domain name
   -f FROM_TIMESTAMP     Only files on or after timestamp supplied (ie. 20060716231334)
   -t TO_TIMESTAMP       Only files on or before timestamp supplied (ie. 20100916231334)
-  -o ONLY_FILTER        Restrict downloading to urls that match this filter
-  -x EXCLUDE_FILTER     Skip downloading of urls that match this filter
-  -a, --all             Expand downloading to error files (40x and 50x) and redirections (30x)
+  -v, --verbose         Enable verbose DEBUG logging
+  --log-file            File to write logs to (e.g., necromancer.log)
   ... (run with -h for all options)
 ```
 
-### 2. Clean Aggressive Redirects
+### 2. Browse Locally
 
-Some older sites contain scripts that force `https://` redirects, which will break local viewing. Clean them out:
-
-```bash
-python clean_html.py
-```
-*(This automatically scans the `websites/` folder).*
-
-### 3. Rewrite Links for Offline Browsing
-
-To browse the site locally without a web server, absolute URLs need to be made relative, and directory links need `index.html` appended to them.
-
-```bash
-python rewrite_links.py example.com
-```
-
-### 4. Mark Missing Links (Optional)
-
-Identify which parts of the site were not successfully archived by marking dead links:
-
-```bash
-python mark_missing_links.py example.com
-```
-*(This will append `[Not Archieved]` to links pointing to missing local files).*
-
-## License
-
-MIT License (or as specified by the original tool authors).
+Simply navigate to `websites/example.com/index.html` and open it in your browser!
 
 ---
 
-Built and maintained by BrainWeb, a web design studio in Norfolk, UK
+## Configuration
+
+You can customize default logging settings in `necromancer_settings.json`:
+```json
+{
+    "logging": {
+        "console": true,
+        "file": true,
+        "log_file_path": "necromancer.log",
+        "level": "INFO"
+    }
+}
+```
+
+---
+
+## Automated Tests
+
+This project includes a robust test suite using `pytest` and `respx` to mock network unreliability (503s and timeouts) without spamming the Internet Archive.
+
+Run the tests:
+```bash
+python3 -m pytest tests/
+```
+
+## Scripts Included in the Unified Pipeline
+
+The following scripts were originally standalone but are now automatically executed sequentially at the end of the `website_necromancer.py` run:
+- `clean_html.py`: Strips out `<script>` tags that force `https://` redirects, which breaks local viewing.
+- `rewrite_links.py`: Scans all HTML/CSS files and converts absolute domain links (e.g., `http://example.com/about`) into local relative paths (e.g., `./about/index.html`).
+- `mark_missing_links.py`: Scans the final local directory for missing `.html` files and appends `[Not Archived]` to any broken links.

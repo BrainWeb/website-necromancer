@@ -1,5 +1,8 @@
 import os
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 def clean_html_files(directory):
     """
@@ -7,8 +10,7 @@ def clean_html_files(directory):
     aggressive client-side scripts that force HTTPS redirects,
     which break local file:// viewing.
     """
-    # Regex to match the known aggressive redirect script:
-    # <script>if (document.location.protocol != "https:") {document.location = document.URL.replace(/^http:/i, "https:");}</script>
+    # Regex to match the known aggressive redirect script
     redirect_pattern = re.compile(
         r'<script[^>]*>\s*if\s*\(\s*document\.location\.protocol\s*!=\s*"https:"\s*\)\s*\{\s*document\.location\s*=\s*document\.URL\.replace\(\/\^http:\/i,\s*"https:"\);\s*\}\s*</script>',
         re.IGNORECASE | re.DOTALL
@@ -17,32 +19,51 @@ def clean_html_files(directory):
     cleaned_count = 0
     total_files = 0
 
+    logger.info(f"Starting HTML cleanup in {directory}...")
+
     for root, _, files in os.walk(directory):
         for file in files:
-            if file.endswith('.html') or file.endswith('.htm'):
+            if file.endswith(('.html', '.htm')):
                 total_files += 1
                 filepath = os.path.join(root, file)
-                try:
-                    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
+                
+                content = None
+                encodings_to_try = ['utf-8', 'latin-1', 'cp1252']
+                
+                for encoding in encodings_to_try:
+                    try:
+                        with open(filepath, 'r', encoding=encoding) as f:
+                            content = f.read()
+                        break # Successfully read
+                    except UnicodeDecodeError:
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error reading {filepath}: {e}")
+                        break
+                        
+                if content is None:
+                    logger.warning(f"Failed to decode {filepath} with any standard encoding. Skipping.")
+                    continue
                     
-                    # Check and replace
-                    new_content, num_subs = redirect_pattern.subn('', content)
-                    
-                    if num_subs > 0:
+                # Check and replace
+                new_content, num_subs = redirect_pattern.subn('', content)
+                
+                if num_subs > 0:
+                    try:
                         with open(filepath, 'w', encoding='utf-8') as f:
                             f.write(new_content)
                         cleaned_count += 1
-                        print(f"Cleaned: {filepath}")
-                except Exception as e:
-                    print(f"Error processing {filepath}: {e}")
+                        logger.debug(f"Cleaned redirect script from: {filepath}")
+                    except Exception as e:
+                        logger.error(f"Error writing to {filepath}: {e}")
 
-    print(f"\nScan complete. Scanned {total_files} HTML files. Cleaned {cleaned_count} files containing the redirect script.")
+    logger.info(f"Scan complete. Scanned {total_files} HTML files. Cleaned {cleaned_count} files containing the redirect script.")
 
 if __name__ == "__main__":
-    target_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'websites')
+    logging.basicConfig(level=logging.INFO)
+    import sys
+    target_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'websites')
     if os.path.exists(target_dir):
-        print(f"Starting cleanup in {target_dir}...")
         clean_html_files(target_dir)
     else:
-        print(f"Directory {target_dir} not found. Have you downloaded any websites yet?")
+        logger.error(f"Directory {target_dir} not found.")
