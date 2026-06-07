@@ -74,22 +74,35 @@ class WebsiteNecromancer:
         if page_index is not None:
             params.append(("page", str(page_index)))
 
-        try:
-            response = await client.get(request_url, params=params, timeout=30.0)
-            response.raise_for_status()
-            data = response.json()
-            if not data:
+        retries = 3
+        for attempt in range(retries):
+            try:
+                response = await client.get(request_url, params=params, timeout=30.0)
+                response.raise_for_status()
+                data = response.json()
+                if not data:
+                    return []
+                if data[0] == ["timestamp", "original"]:
+                    data.pop(0)
+                return data
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (502, 503, 504):
+                    if attempt < retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                if e.response.status_code != 400:
+                    print(f"Error fetching API listing for {url} page={page_index}: {e}")
                 return []
-            if data[0] == ["timestamp", "original"]:
-                data.pop(0)
-            return data
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code != 400:
+            except httpx.ReadTimeout as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
                 print(f"Error fetching API listing for {url} page={page_index}: {e}")
-            return []
-        except Exception as e:
-            print(f"Error fetching API listing for {url} page={page_index}: {repr(e)}")
-            return []
+                return []
+            except Exception as e:
+                print(f"Error fetching API listing for {url} page={page_index}: {repr(e)}")
+                return []
+        return []
 
     async def get_all_snapshots_to_consider(self, client):
         print("Getting snapshot pages", end="", flush=True)
